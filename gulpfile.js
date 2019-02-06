@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const gulp = require('gulp');
 const watch = require('gulp-watch');
 const batch = require('gulp-batch');
@@ -6,6 +7,9 @@ const plumber = require('gulp-plumber');
 const livereload = require('gulp-livereload');
 const minisite = require('gulp-minisite');
 const nunjucks = require('nunjucks');
+const frontMatter = require('front-matter');
+
+const generateBlogOG = require('./blog-og-generator/card');
 
 // const loadBlogPosts = require('./src/gulp/loadBlogPosts');
 
@@ -129,6 +133,12 @@ gulp.task('blog', () => {
           if (tmplData.page.template == 'post.html') {
             tmplData.page.authorName = authorName(tmplData.page);
             tmplData.page.authorLink = authorLink(tmplData.page);
+            if (tmplData.page.emoji && !tmplData.page.image) {
+              tmplData.page.image = `/img/blog/${tmplData.page.source.replace(
+                '.md',
+                '-og.png'
+              )}`;
+            }
           }
 
           return env.render(tmplName, tmplData);
@@ -137,6 +147,33 @@ gulp.task('blog', () => {
     )
     .pipe(gulp.dest('blog'))
     .pipe(livereload());
+});
+
+gulp.task('blog:og', async () => {
+  const files = fs
+    .readdirSync('src/blog/content')
+    .filter(fn => fn.endsWith('.md'));
+  for (const fn of files) {
+    const content = fs.readFileSync(`src/blog/content/${fn}`, 'utf-8');
+    const { attributes } = frontMatter(content);
+    const target = path.join(
+      __dirname,
+      'img',
+      'blog',
+      fn.replace('.md', '-og.png')
+    );
+    if (fs.existsSync(target)) {
+      continue;
+    }
+    if (
+      attributes.template === 'post.html' &&
+      attributes.emoji &&
+      !attributes.image
+    ) {
+      await generateBlogOG(attributes.emoji, attributes.title, target);
+      console.log(`Generated: ${target}`);
+    }
+  }
 });
 
 gulp.task('bounties', () => {
@@ -197,4 +234,4 @@ gulp.task('dev', ['blog'], () => {
   watch(files.blog, batch((events, done) => gulp.start('blog', done)));
 });
 
-gulp.task('default', ['blog', 'bounties', 'coc']);
+gulp.task('default', ['blog', 'blog:og', 'bounties', 'coc']);
